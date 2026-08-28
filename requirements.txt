@@ -1,0 +1,2 @@
+# Phase 0 uses Python's standard library only.
+# Streamlit and later pipeline dependencies will be added in their respective phases.
