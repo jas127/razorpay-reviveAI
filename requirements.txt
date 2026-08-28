@@ -1,2 +1,5 @@
-# Phase 0 uses Python's standard library only.
-# Streamlit and later pipeline dependencies will be added in their respective phases.
+# Phase 0 and the deterministic pipeline use Python's standard library.
+# These SDKs are imported lazily by the diagnosis providers so the app can
+# still run its hardcoded escalation fallback when keys are not configured.
+google-generativeai
+groq

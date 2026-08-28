@@ -1,0 +1,1 @@
+- [Diagnosis provider dependencies](diagnosis-provider-dependencies.md) — keep LLM SDK imports optional so fallback diagnosis works without credentials or runtime package installation.

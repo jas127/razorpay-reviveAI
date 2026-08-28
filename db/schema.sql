@@ -62,7 +62,8 @@ CREATE TABLE diagnoses (
     recommended_discount_pct REAL DEFAULT 0,
     confidence REAL,           -- 0-1
     llm_raw_response TEXT,     -- full response, stored for audit
-    diagnosed_at TIMESTAMP
+    diagnosed_at TIMESTAMP,
+    provider_used TEXT         -- 'gemini' | 'groq' | 'fallback_default'
 );
 
 -- Output of Policy Engine — the FINAL decision, always deterministic
