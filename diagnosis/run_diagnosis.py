@@ -16,6 +16,14 @@ import sqlite3
 from pathlib import Path
 
 try:
+    from db.idempotency import acquire_lock, log_lock_contended
+except ModuleNotFoundError:  # Supports `python diagnosis/run_diagnosis.py`.
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from db.idempotency import acquire_lock, log_lock_contended
+
+try:
     from .diagnosis_agent import (
         diagnose_risk_event,
         get_provider_chain,
@@ -82,6 +90,28 @@ def main() -> None:
 
         for risk_event in risk_events:
             with connection:
+                # New detections are promoted before the lock is acquired.
+                # The lock itself is still the atomic diagnosed -> locked
+                # boundary immediately before any provider call.
+                promoted = connection.execute(
+                    """
+                    UPDATE risk_events
+                    SET status = 'diagnosed'
+                    WHERE risk_id = ? AND status = 'new'
+                    """,
+                    (risk_event["risk_id"],),
+                ).rowcount
+                if promoted != 1 or not acquire_lock(
+                    risk_event["risk_id"], connection=connection
+                ):
+                    log_lock_contended(
+                        risk_event["risk_id"],
+                        connection=connection,
+                    )
+                    print(
+                        f"[lock_contended] risk_id={risk_event['risk_id']} skipped"
+                    )
+                    continue
                 result = diagnose_risk_event(
                     risk_event,
                     connection,

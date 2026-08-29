@@ -45,9 +45,10 @@ CREATE TABLE risk_events (
     status TEXT DEFAULT 'new', -- new | locked | diagnosed | actioned | resolved | expired |
                                -- rejected_by_merchant
     lock_token TEXT,           -- idempotency guard #2: set atomically before execution begins
-    locked_at TIMESTAMP        -- if set and stale (>N minutes) without a resulting action, the lock
+    locked_at TIMESTAMP,       -- if set and stale (>N minutes) without a resulting action, the lock
                                -- is considered abandoned and is swept back to
                                -- 'diagnosed'/STOP_AND_ESCALATE
+    force_escalate INTEGER DEFAULT 0 -- set after a stale lock; Policy Engine must require human review
 );
 
 -- Output of Diagnosis Agent (LLM) — advisory only
@@ -109,7 +110,9 @@ CREATE TABLE outcomes (
 CREATE TABLE audit_log (
     log_id TEXT PRIMARY KEY,
     risk_id TEXT,
-    stage TEXT, -- 'detection' | 'diagnosis' | 'policy' | 'execution' | 'outcome'
+    stage TEXT, -- 'detection' | 'diagnosis' | 'diagnosis_failed' |
+                -- 'lock_contended' | 'lock_swept' | 'policy' |
+                -- 'duplicate_execution_blocked' | 'execution' | 'outcome'
     actor TEXT, -- 'system' | 'gemini_llm' | 'policy_engine' | 'human:<user_id>'
     input_snapshot TEXT,  -- JSON of what went in
     output_snapshot TEXT, -- JSON of what came out

@@ -1,0 +1,61 @@
+In /policy/, build a deterministic Policy Engine — pure Python, NO LLM calls, NO API calls.
+
+First, seed the policy_rules table with these defaults (as JSON rule_value):
+
+- max_contact_frequency: {"max_per_7_days": 2}
+
+- cooldown_hours: {"hours": 24}
+
+- max_attempts: {"max": 3}
+
+- discount_cap: {"max_discount_pct": 10}
+
+- approval_threshold_amount: {"amount": 10000}
+
+- confidence_threshold: {"min_confidence": 0.6}
+
+- channel_hours: {"start_hour": 9, "end_hour": 20}
+
+Write evaluate_policy(risk_event_row, diagnosis_row) that checks rules in this order,
+
+building a list of rules_applied and a human-readable reason string as it goes:
+
+1. If customer.opted_out == 1: decision='blocked', reason='customer opted out', STOP.
+
+2. If customer.contact_count_last_7d >= max_per_7_days: decision='blocked',
+
+   reason='frequency cap reached', STOP.
+
+3. If a prior action on this risk_id was taken within cooldown_hours: decision='blocked',
+
+   reason='cooldown active', STOP.
+
+4. If number of prior actions on this risk_id >= max_attempts: decision='blocked',
+
+   reason='max attempts reached, marking risk_event as expired', also update
+
+   risk_events.status='expired', STOP.
+
+5. If diagnosis.confidence < min_confidence: decision='needs_human_approval',
+
+   reason='low LLM confidence', STOP.
+
+6. If risk_event.amount_at_risk > approval_threshold_amount: decision='needs_human_approval',
+
+   reason='amount exceeds auto-approval threshold', STOP.
+
+7. Otherwise: decision='auto_approved'. Set final_action = diagnosis.recommended_action.
+
+   Clip final_discount_pct = min(diagnosis.recommended_discount_pct, discount_cap). If
+
+   it was clipped, add 'modified' info to reason and set decision='modified'.
+
+Insert the result into policy_decisions and an audit_log row with stage='policy',
+
+actor='policy_engine'.
+
+Write main() looping over all diagnosed risk_events, applying evaluate_policy, printing
+
+a summary table: how many auto_approved / modified / blocked / needs_human_approval.
+
+Runnable standalone: python policy/run_policy.py

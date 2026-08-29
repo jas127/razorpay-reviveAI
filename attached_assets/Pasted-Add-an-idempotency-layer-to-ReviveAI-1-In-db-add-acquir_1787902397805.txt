@@ -1,0 +1,63 @@
+Add an idempotency layer to ReviveAI.
+
+1. In /db/, add acquire_lock(risk_id) -> bool: runs
+
+   UPDATE risk_events SET status='locked', lock_token=<new uuid>, locked_at=<now>
+
+   WHERE risk_id=? AND status='diagnosed'
+
+   Return True if cursor.rowcount == 1, else False (lock already held by someone else).
+
+   Wire this into the top of the diagnosis step: only proceed to call the LLM if
+
+   acquire_lock() returns True; otherwise skip this risk_event this pass and log an
+
+   audit_log row with stage='lock_contended'.
+
+2. In /db/, add sweep_stale_locks(stale_minutes=10): finds risk_events with
+
+   status='locked' and locked_at older than stale_minutes AND no matching row in
+
+   actions_taken. For each: reset status back to 'diagnosed', insert an audit_log row
+
+   with stage='lock_swept', and set a flag/column force_escalate=1 on that risk_event
+
+   so the Policy Engine (built in the next phase) is forced to route it to
+
+   needs_human_approval regardless of confidence.
+
+3. Add a UNIQUE constraint on actions_taken.decision_id (already in schema — just
+
+   confirm the executor's INSERT will now fail loudly with sqlite3.IntegrityError if
+
+   called twice for the same decision_id; catch that specific exception in
+
+   execute_action() and log it as audit_log stage='duplicate_execution_blocked'
+
+   rather than letting it crash the batch).
+
+4. Create /tests/test_idempotency.py with three test functions:
+
+   - test_concurrent_duplicate_trigger(): use Python's threading or multiprocessing to
+
+     call acquire_lock() on the SAME risk_id from two threads simultaneously. Assert
+
+     exactly one returns True and the other returns False.
+
+   - test_stale_lock_sweep(): manually acquire a lock, manually backdate its locked_at
+
+     to 30 minutes ago, run sweep_stale_locks(), assert status is back to 'diagnosed'
+
+     and force_escalate=1.
+
+   - test_duplicate_executor_call(): call execute_action() twice with the same
+
+     decision_id, assert the first succeeds and the second raises/is caught as
+
+     duplicate_execution_blocked, and assert only ONE row exists in actions_taken for
+
+     that decision_id.
+
+Print PASS/FAIL clearly for each test. Make this runnable standalone:
+
+python -m pytest tests/test_idempotency.py -v
