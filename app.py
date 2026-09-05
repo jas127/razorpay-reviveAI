@@ -1396,9 +1396,42 @@ def render_approvals() -> None:
         with btn_cols[0]:
             if st.button("✓ Approve & Execute", key=f"approve_{decision['decision_id']}", type="primary", use_container_width=True):
                 with get_connection() as connection:
+                    diag_row = connection.execute(
+                        "SELECT recommended_action, recommended_channel, recommended_discount_pct FROM diagnoses WHERE diagnosis_id = ?",
+                        (decision["diagnosis_id"],),
+                    ).fetchone()
+                    approved_action = (diag_row["recommended_action"] if diag_row and diag_row["recommended_action"] != "escalate_to_human" else None) or "send_payment_link"
+                    approved_discount = float(diag_row["recommended_discount_pct"] if diag_row else 0)
+
+                    connection.execute(
+                        """
+                        UPDATE policy_decisions 
+                        SET decision = 'human_approved',
+                            final_action = ?,
+                            final_discount_pct = min(?, 10.0),
+                            reason = reason || ' · Approved by merchant'
+                        WHERE decision_id = ?
+                        """,
+                        (approved_action, approved_discount, decision["decision_id"]),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO audit_log (
+                            log_id, risk_id, stage, actor, input_snapshot, output_snapshot, timestamp
+                        ) VALUES (?, ?, 'policy', 'human:merchant_operator', ?, ?, datetime('now'))
+                        """,
+                        (
+                            f"audit_human_approved_{decision['decision_id']}",
+                            decision["risk_id"],
+                            json.dumps({"decision_id": decision["decision_id"]}),
+                            json.dumps({"decision": "human_approved", "final_action": approved_action}),
+                        ),
+                    )
+                    connection.commit()
+
                     from executor.action_executor import execute_action, simulate_outcomes
-                    result = execute_action(decision, connection=connection)
-                    if result["status"] == "executed":
+                    result = execute_action(decision["decision_id"], connection=connection)
+                    if result.get("status") == "executed":
                         simulate_outcomes(connection, action_id=result["action_id"], seed=42)
                 st.success(f"Approved recovery action for {decision['customer_name']}!")
                 st.rerun()

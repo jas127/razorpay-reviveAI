@@ -18,7 +18,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_PATH = PROJECT_ROOT / "revive.db"
-EXECUTABLE_DECISIONS = {"auto_approved", "modified"}
+EXECUTABLE_DECISIONS = {"auto_approved", "modified", "human_approved"}
 MAX_ATTEMPTS_DEFAULT = 3
 
 ACTION_TYPES = {
