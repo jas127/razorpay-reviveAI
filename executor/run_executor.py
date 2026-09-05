@@ -44,8 +44,9 @@ def main() -> None:
     args = parser.parse_args()
 
     executed = 0
-    with sqlite3.connect(args.database) as connection:
+    with sqlite3.connect(args.database, timeout=30) as connection:
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 10000")
         pending_decisions = load_pending_decisions(connection)
         for decision in pending_decisions:
             result = execute_action(decision, connection=connection)

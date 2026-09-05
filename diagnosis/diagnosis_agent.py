@@ -107,11 +107,47 @@ def build_prompt(risk_event_row: sqlite3.Row | dict[str, Any]) -> str:
         )
         or 0
     )
+    customer_name = value_from_row(
+        risk_event_row,
+        "customer_name",
+        value_from_row(risk_event_row, "name", "Customer"),
+    )
+    preferred_language = value_from_row(
+        risk_event_row,
+        "customer_preferred_language",
+        value_from_row(risk_event_row, "preferred_language", "en"),
+    )
     failure_code = value_from_row(risk_event_row, "failure_code")
     failure_text = failure_code or "not applicable / not supplied"
     amount = float(value_from_row(risk_event_row, "amount_at_risk", 0) or 0)
     risk_category = value_from_row(risk_event_row, "risk_category", "unknown")
     event_days = days_since_event(occurred_at) if occurred_at else 0.0
+
+    is_hinglish = (preferred_language == "hi-en")
+    hinglish_instruction = ""
+    json_shape = """{
+  "root_cause": "<one sentence explanation>",
+  "recommended_action": "<one of: send_reminder, retry_payment, offer_discount, send_payment_link, switch_payment_method, escalate_to_human>",
+  "recommended_channel": "<one of: email, sms, whatsapp>",
+  "recommended_discount_pct": <number 0-100>,
+  "confidence": <number 0-1>
+}"""
+
+    if is_hinglish:
+        hinglish_instruction = f"""
+Customer name: {customer_name}
+Customer preferred language: Hinglish (hi-en)
+IMPORTANT HINGLISH INSTRUCTION: Since the customer preferred language is 'hi-en', include a "customer_message" field in the JSON response containing a natural Hinglish recovery message (written in Roman script, mixing conversational Hindi and English as urban Indian customers text, e.g. "Hi {customer_name}, aapka ₹{amount:,.0f} ka payment fail ho gaya tha, yahan click karke turant complete karein"). Ensure it aligns with your recommended_action.
+""".strip()
+
+        json_shape = """{
+  "root_cause": "<one sentence explanation>",
+  "recommended_action": "<one of: send_reminder, retry_payment, offer_discount, send_payment_link, switch_payment_method, escalate_to_human>",
+  "recommended_channel": "<one of: email, sms, whatsapp>",
+  "recommended_discount_pct": <number 0-100>,
+  "confidence": <number 0-1>,
+  "customer_message": "<natural Hinglish recovery message in Roman script>"
+}"""
 
     return f"""
 You are the advisory diagnosis component of ReviveAI, an AI revenue recovery
@@ -126,16 +162,11 @@ Days since event: {event_days:.2f}
 Customer contacts in the last 7 days: {contact_count}
 Prior risk events for this customer: {prior_risk_count}
 Repeat offender: {"yes" if prior_risk_count > 0 else "no"}
+{hinglish_instruction}
 
 Respond ONLY with valid JSON. Do not use markdown fences, a preamble, or
 additional keys. Use exactly this shape:
-{{
-  "root_cause": "<one sentence explanation>",
-  "recommended_action": "<one of: send_reminder, retry_payment, offer_discount, send_payment_link, switch_payment_method, escalate_to_human>",
-  "recommended_channel": "<one of: email, sms, whatsapp>",
-  "recommended_discount_pct": <number 0-100>,
-  "confidence": <number 0-1>
-}}
+{json_shape}
 """.strip()
 
 
@@ -200,12 +231,19 @@ def _validate_diagnosis(payload: Any) -> dict[str, Any]:
     if not 0 <= float(confidence) <= 1:
         raise ValueError("confidence must be between 0 and 1")
 
+    customer_message = payload.get("customer_message")
+    if customer_message is not None and not isinstance(customer_message, str):
+        customer_message = str(customer_message)
+    if customer_message and not customer_message.strip():
+        customer_message = None
+
     return {
         "root_cause": root_cause.strip(),
         "recommended_action": action,
         "recommended_channel": channel,
         "recommended_discount_pct": float(discount),
         "confidence": float(confidence),
+        "customer_message": customer_message.strip() if customer_message else None,
     }
 
 
@@ -266,6 +304,7 @@ def _default_diagnosis() -> dict[str, Any]:
         "recommended_channel": "email",
         "recommended_discount_pct": 0.0,
         "confidence": 0.0,
+        "customer_message": None,
     }
 
 
@@ -280,13 +319,16 @@ def _store_diagnosis(
     risk_id = value_from_row(risk_event_row, "risk_id")
     diagnosis_id = f"diagnosis_{risk_id}"
     diagnosed_at = timestamp_for_sql(utc_now())
+    hinglish_msg = diagnosis.get("customer_message")
+
     connection.execute(
         """
         INSERT OR IGNORE INTO diagnoses (
             diagnosis_id, risk_id, root_cause, recommended_action,
             recommended_channel, recommended_discount_pct, confidence,
-            llm_raw_response, diagnosed_at, provider_used
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            llm_raw_response, diagnosed_at, provider_used,
+            customer_message_hinglish
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             diagnosis_id,
@@ -299,6 +341,7 @@ def _store_diagnosis(
             raw_response,
             diagnosed_at,
             provider_used,
+            hinglish_msg,
         ),
     )
     output_snapshot = {

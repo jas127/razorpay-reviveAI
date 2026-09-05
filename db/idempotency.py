@@ -43,7 +43,11 @@ def _ensure_force_escalate_column(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE risk_events ADD COLUMN force_escalate INTEGER DEFAULT 0"
         )
-        connection.commit()
+    if "promise_to_pay_date" not in columns:
+        connection.execute(
+            "ALTER TABLE risk_events ADD COLUMN promise_to_pay_date TIMESTAMP"
+        )
+    connection.commit()
 
 
 def _json(value: dict[str, Any]) -> str:

@@ -39,8 +39,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with sqlite3.connect(args.database) as connection:
+    with sqlite3.connect(args.database, timeout=30) as connection:
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 10000")
         seed_default_policy_rules(connection)
         risk_and_diagnoses = load_diagnosed_risk_events(connection)
         counts: Counter[str] = Counter()

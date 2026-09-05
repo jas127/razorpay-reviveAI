@@ -7,6 +7,7 @@ Every action is explicitly stored with ``simulated = 1``.
 from __future__ import annotations
 
 import json
+import os
 import random
 import sqlite3
 import uuid
@@ -134,7 +135,7 @@ def _load_decision(
 def build_message(decision_row: sqlite3.Row | dict[str, Any]) -> str:
     """Render a deterministic template for an action/channel pair."""
     action = _value(decision_row, "final_action")
-    channel = _value(decision_row, "channel", "email")
+    channel = _value(decision_row, "channel") or "email"
     if action not in ACTION_TYPES:
         raise ValueError(f"unsupported executable action: {action!r}")
     if channel not in {"email", "sms", "whatsapp"}:
@@ -186,10 +187,41 @@ def _execute_action_with_connection(
     if not customer_id:
         raise ValueError(f"customer not found for risk event: {risk_id}")
 
+    # Defense-in-depth: Unconditionally reject execution if customer has opted out
+    cust_row = connection.execute(
+        "SELECT opted_out FROM customers WHERE customer_id = ?",
+        (customer_id,),
+    ).fetchone()
+    if cust_row and int(cust_row[0] or 0) == 1:
+        raise ValueError(f"Cannot execute action: customer {customer_id!r} has opted out")
+
     message = build_message(decision_row)
     action_type = _value(decision_row, "final_action")
-    channel = _value(decision_row, "channel", "email")
+    channel = _value(decision_row, "channel") or "email"
     action_id = f"action_{uuid.uuid4().hex}"
+    simulated_flag = 1
+
+    use_real_rzp = os.getenv("USE_REAL_RAZORPAY_LINKS", "").strip().lower() in ("true", "1", "yes")
+    if use_real_rzp and action_type == "send_payment_link":
+        try:
+            from executor.razorpay_client import create_real_payment_link
+
+            cust_name = str(_value(decision_row, "customer_name", "Customer") or "Customer")
+            cust_email = _value(decision_row, "customer_email")
+            amount_val = float(_value(decision_row, "amount_at_risk", 0) or 0)
+
+            real_url = create_real_payment_link(
+                risk_id=risk_id,
+                amount_at_risk=amount_val,
+                customer_name=cust_name,
+                customer_email=cust_email,
+            )
+            if real_url:
+                message = real_url
+                simulated_flag = 0
+        except Exception:
+            simulated_flag = 1
+
     try:
         # This INSERT is the at-most-once boundary. A duplicate decision_id
         # must be rejected by SQLite's UNIQUE constraint, not a prior read.
@@ -198,7 +230,7 @@ def _execute_action_with_connection(
             INSERT INTO actions_taken (
                 action_id, decision_id, risk_id, action_type, channel,
                 message_sent, executed_at, simulated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 action_id,
@@ -208,6 +240,7 @@ def _execute_action_with_connection(
                 channel,
                 message,
                 _timestamp(),
+                simulated_flag,
             ),
         )
         connection.execute(
@@ -225,7 +258,7 @@ def _execute_action_with_connection(
             "risk_id": risk_id,
             "action_type": action_type,
             "channel": channel,
-            "simulated": True,
+            "simulated": bool(simulated_flag),
         }
         _audit(
             connection,
@@ -328,10 +361,19 @@ def _policy_max_attempts(connection: sqlite3.Connection) -> int:
         return MAX_ATTEMPTS_DEFAULT
 
 
-def _pending_actions(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+def _pending_actions(
+    connection: sqlite3.Connection,
+    *,
+    action_id: str | None = None,
+) -> list[sqlite3.Row]:
+    action_filter = ""
+    params: tuple[Any, ...] = ()
+    if action_id is not None:
+        action_filter = "AND a.action_id = ?"
+        params = (action_id,)
     connection.row_factory = sqlite3.Row
     return connection.execute(
-        """
+        f"""
         SELECT
             a.*,
             r.amount_at_risk,
@@ -355,8 +397,10 @@ def _pending_actions(connection: sqlite3.Connection) -> list[sqlite3.Row]:
         WHERE NOT EXISTS (
             SELECT 1 FROM outcomes AS o WHERE o.action_id = a.action_id
         )
+        {action_filter}
         ORDER BY a.executed_at ASC, a.action_id ASC
-        """
+        """,
+        params,
     ).fetchall()
 
 
@@ -364,9 +408,10 @@ def simulate_outcomes(
     connection: sqlite3.Connection | None = None,
     *,
     seed: int = 42,
+    action_id: str | None = None,
     database_path: Path = DATABASE_PATH,
 ) -> dict[str, Any]:
-    """Simulate one outcome for every action that does not have one yet."""
+    """Simulate one outcome for every pending action, or one action by ID."""
     owns_connection = connection is None
     db = connection or sqlite3.connect(database_path)
     db.row_factory = sqlite3.Row
@@ -377,7 +422,7 @@ def simulate_outcomes(
     processed_count = 0
 
     try:
-        for action in _pending_actions(db):
+        for action in _pending_actions(db, action_id=action_id):
             action_type = action["action_type"]
             base_probability = BASE_PAID_PROBABILITIES.get(action_type, 0.25)
             amount = float(action["amount_at_risk"] or 0)

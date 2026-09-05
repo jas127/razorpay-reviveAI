@@ -48,7 +48,8 @@ CREATE TABLE risk_events (
     locked_at TIMESTAMP,       -- if set and stale (>N minutes) without a resulting action, the lock
                                -- is considered abandoned and is swept back to
                                -- 'diagnosed'/STOP_AND_ESCALATE
-    force_escalate INTEGER DEFAULT 0 -- set after a stale lock; Policy Engine must require human review
+    force_escalate INTEGER DEFAULT 0, -- set after a stale lock; Policy Engine must require human review
+    promise_to_pay_date TIMESTAMP     -- Phase 6: Promise-to-Pay tracker target date
 );
 
 -- Output of Diagnosis Agent (LLM) — advisory only
@@ -64,7 +65,8 @@ CREATE TABLE diagnoses (
     confidence REAL,           -- 0-1
     llm_raw_response TEXT,     -- full response, stored for audit
     diagnosed_at TIMESTAMP,
-    provider_used TEXT         -- 'gemini' | 'groq' | 'fallback_default'
+    provider_used TEXT,        -- 'gemini' | 'groq' | 'fallback_default'
+    customer_message_hinglish TEXT -- Phase 6: Hinglish message for hi-en customers
 );
 
 -- Output of Policy Engine — the FINAL decision, always deterministic

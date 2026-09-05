@@ -1,8 +1,16 @@
-"""Provider interface and shared errors for the ReviveAI diagnosis layer."""
-
-from __future__ import annotations
-
+import os
 from abc import ABC, abstractmethod
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+    if _ENV_PATH.exists():
+        load_dotenv(_ENV_PATH)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
 
 
 class ProviderError(RuntimeError):

@@ -373,6 +373,19 @@ def evaluate_policy(
         recommended_action = _value(
             diagnosis_row, "recommended_action", "escalate_to_human"
         )
+        if recommended_action == "escalate_to_human":
+            applied.append("escalate_to_human")
+            return _insert_policy_result(
+                db,
+                risk_event_row=risk_event_row,
+                diagnosis_row=diagnosis_row,
+                decision="needs_human_approval",
+                final_action="escalate_to_human",
+                final_discount_pct=0.0,
+                rules_applied=applied,
+                reason="LLM advised human escalation",
+            )
+
         recommended_discount = float(
             _value(diagnosis_row, "recommended_discount_pct", 0) or 0
         )

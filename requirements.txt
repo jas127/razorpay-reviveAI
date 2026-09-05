@@ -1,6 +1,8 @@
-# Phase 0 and the deterministic pipeline use Python's standard library.
-# These SDKs are imported lazily by the diagnosis providers so the app can
-# still run its hardcoded escalation fallback when keys are not configured.
-google-generativeai
-groq
-pytest
+# ReviveAI Core Dependencies
+google-generativeai>=0.8.0
+groq>=1.7.0
+pandas>=2.0.0
+pytest>=8.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+streamlit>=1.35.0

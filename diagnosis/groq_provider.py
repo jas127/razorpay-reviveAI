@@ -14,7 +14,7 @@ class GroqProvider(LLMProvider):
     """Call Groq's OpenAI-compatible chat completion API."""
 
     name = "groq"
-    model_name = "llama-3.3-70b-versatile"
+    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
     def generate_diagnosis(self, prompt: str) -> str:
         try:
@@ -24,17 +24,29 @@ class GroqProvider(LLMProvider):
 
             from groq import Groq
 
-            client = Groq(api_key=api_key)
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=400,
-            )
-            response_text = response.choices[0].message.content
-            if not response_text:
-                raise ProviderError("Groq returned an empty response")
-            return str(response_text)
+            client = Groq(api_key=api_key, max_retries=1, timeout=8.0)
+            models_to_try = [self.model_name]
+            for fallback in ("openai/gpt-oss-20b", "qwen/qwen3.6-27b", "openai/gpt-oss-120b"):
+                if fallback not in models_to_try:
+                    models_to_try.append(fallback)
+
+            last_exc = None
+            for model in models_to_try:
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.2,
+                        max_tokens=500,
+                    )
+                    response_text = response.choices[0].message.content
+                    if response_text:
+                        return str(response_text)
+                except Exception as exc:
+                    last_exc = exc
+                    continue
+
+            raise ProviderError(f"Groq request failed across attempted models: {last_exc}")
         except ProviderError:
             raise
         except Exception as exc:
