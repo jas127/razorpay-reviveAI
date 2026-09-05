@@ -1150,21 +1150,29 @@ def render_diagnosis_view() -> None:
     # Mini Lifecycle Provenance Timeline
     render_pipeline_mini_timeline(selected)
 
-    # Hinglish recovery message box if applicable
-    if diagnosis.get("customer_message_hinglish"):
-        html(
-            f"""
-            <div class="revive-card" style="background: linear-gradient(145deg, #1e293b 0%, #0d2847 100%); border-left: 4px solid #38bdf8;">
-                <div class="revive-card-header">
-                    <div class="stat-label" style="color:#38bdf8;">💬 Localized Hinglish Recovery Outreach ({diagnosis.get('preferred_language', 'hi-en')})</div>
-                    <div><span class="status-badge badge-blue">Ready to Dispatch</span></div>
-                </div>
-                <div style="font-size: 1.05rem; color: #f8fafc; font-style: italic; margin-top: 6px; line-height: 1.5;">
-                    "{diagnosis['customer_message_hinglish']}"
-                </div>
+    # Localized Outreach Copy Box (Always visible)
+    cust_msg = diagnosis.get("customer_message_hinglish")
+    pref_lang = diagnosis.get("preferred_language") or "hi-en"
+    if not cust_msg:
+        # Fallback generated Hinglish preview if customer preferred language was English in seed data
+        name_val = diagnosis.get('customer_name', 'there')
+        amt_val = float(diagnosis.get('amount_at_risk', 0) or 0)
+        cust_msg = f"Hi {name_val}, aapka ₹{amt_val:,.0f} ka payment complete nahi ho paya tha. Niche diye link se turant complete karein."
+
+    badge_label = "Hinglish (hi-en)" if pref_lang == "hi-en" else "English (en) / Hinglish"
+    html(
+        f"""
+        <div class="revive-card" style="background: linear-gradient(145deg, #1e293b 0%, #0d2847 100%); border-left: 4px solid #38bdf8; margin-top: 12px;">
+            <div class="revive-card-header">
+                <div class="stat-label" style="color:#38bdf8;">💬 Localized Outreach Copy ({badge_label})</div>
+                <div><span class="status-badge badge-blue">Ready to Dispatch</span></div>
             </div>
-            """
-        )
+            <div style="font-size: 1.05rem; color: #f8fafc; font-style: italic; margin-top: 6px; line-height: 1.5;">
+                "{cust_msg}"
+            </div>
+        </div>
+        """
+    )
 
     # Dispatched Action / Live Razorpay Link box
     action_info = query_rows(
