@@ -1290,19 +1290,40 @@ def render_recovery_queue() -> None:
     st.dataframe(dataframe, use_container_width=True, hide_index=True)
 
     if live_links:
-        st.markdown("#### ⚡ Live Razorpay Test Mode Payment Links")
-        for cust, r_id, link in live_links:
-            html(
-                f"""
-                <div style="background: #0f172a; border: 1px solid #10b981; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <strong style="color:#f8fafc;">{cust}</strong> (<code style="color:#38bdf8;">{short_id(r_id)}</code>): 
-                        <a href="{link}" target="_blank" style="color: #38bdf8; font-weight:700; text-decoration: underline; margin-left: 8px;">{link} ↗</a>
-                    </div>
-                    <div><span class="status-badge badge-green">LIVE (Razorpay Test Mode)</span></div>
+        st.markdown(
+            """
+            <div style="margin-top: 24px; margin-bottom: 12px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">⚡ Live Razorpay Checkout Gateways</h3>
+                    <div style="font-size:0.8rem; color:#94a3b8;">Real sandbox payment links generated via Razorpay API — payable and testable in real-time</div>
                 </div>
-                """
-            )
+                <span class="status-badge badge-green">LIVE API INTEGRATION</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        link_cols = st.columns(2)
+        for idx, (cust, r_id, link) in enumerate(live_links):
+            with link_cols[idx % 2]:
+                html(
+                    f"""
+                    <div class="revive-card" style="border: 1px solid rgba(16, 185, 129, 0.4); background: linear-gradient(145deg, #0f172a 0%, #0d2847 100%); margin-bottom: 12px;">
+                        <div class="revive-card-header">
+                            <div>
+                                <span style="font-weight:700; font-size:1.0rem; color:#f8fafc;">{cust}</span>
+                                <span style="font-size:0.75rem; color:#94a3b8; margin-left:6px;">({short_id(r_id)})</span>
+                            </div>
+                            <span class="status-badge badge-green">Active Link</span>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 0.85rem; color: #cbd5e1; word-break: break-all;">
+                            🔗 <code>{link}</code>
+                        </div>
+                        <div style="margin-top: 12px;">
+                            <a href="{link}" target="_blank" style="display:inline-block; background-color:#0284c7; color:#ffffff; padding:6px 14px; border-radius:6px; font-size:0.85rem; font-weight:600; text-decoration:none;">Open Razorpay Checkout ↗</a>
+                        </div>
+                    </div>
+                    """
+                )
 
 
 def reject_decision(decision: sqlite3.Row) -> None:
