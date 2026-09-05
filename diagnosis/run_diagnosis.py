@@ -104,19 +104,19 @@ def main() -> None:
 
         for risk_event in risk_events:
             risk_id = risk_event["risk_id"]
-            with connection:
-                promoted = connection.execute(
-                    """
-                    UPDATE risk_events
-                    SET status = 'diagnosed'
-                    WHERE risk_id = ? AND status = 'new'
-                    """,
-                    (risk_id,),
-                ).rowcount
-                if promoted != 1 or not acquire_lock(risk_id, connection=connection):
-                    log_lock_contended(risk_id, connection=connection)
-                    print(f"[lock_contended] risk_id={risk_id} skipped", flush=True)
-                    continue
+            promoted = connection.execute(
+                """
+                UPDATE risk_events
+                SET status = 'diagnosed'
+                WHERE risk_id = ? AND status = 'new'
+                """,
+                (risk_id,),
+            ).rowcount
+            connection.commit()
+            if promoted != 1 or not acquire_lock(risk_id, connection=connection):
+                log_lock_contended(risk_id, connection=connection)
+                print(f"[lock_contended] risk_id={risk_id} skipped", flush=True)
+                continue
 
             # LLM Provider Call is performed outside SQLite write lock
             result = diagnose_risk_event(
@@ -137,6 +137,7 @@ def main() -> None:
                     """,
                     (risk_id,),
                 )
+                connection.commit()
 
             provider_used = result["provider_used"]
             if result["used_default"]:

@@ -89,8 +89,9 @@ def get_connection() -> sqlite3.Connection:
         raise FileNotFoundError(
             f"{DATABASE_PATH} does not exist. Run python db/seed_data.py first."
         )
-    connection = sqlite3.connect(DATABASE_PATH)
+    connection = sqlite3.connect(DATABASE_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
     connection.execute("PRAGMA foreign_keys = ON")
     ensure_phase6_columns(connection)
     return connection

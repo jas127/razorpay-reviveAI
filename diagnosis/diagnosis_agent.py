@@ -358,6 +358,7 @@ def _store_diagnosis(
         input_snapshot=row_snapshot(risk_event_row),
         output_snapshot=output_snapshot,
     )
+    connection.commit()
     return output_snapshot
 
 

@@ -14,7 +14,7 @@ class GeminiProvider(LLMProvider):
     """Call Gemini with current production models."""
 
     name = "gemini"
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
     def generate_diagnosis(self, prompt: str) -> str:
         try:
@@ -26,7 +26,7 @@ class GeminiProvider(LLMProvider):
 
             genai.configure(api_key=api_key)
             models_to_try = [self.model_name]
-            for fallback in ("gemini-3.7-flash", "gemini-3.6-flash", "gemini-flash-latest"):
+            for fallback in ("gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"):
                 if fallback not in models_to_try:
                     models_to_try.append(fallback)
 
@@ -34,7 +34,7 @@ class GeminiProvider(LLMProvider):
             for model_id in models_to_try:
                 try:
                     model = genai.GenerativeModel(model_id)
-                    response = model.generate_content(prompt)
+                    response = model.generate_content(prompt, request_options={"timeout": 6.0})
                     response_text = getattr(response, "text", None)
                     if response_text:
                         return str(response_text)
