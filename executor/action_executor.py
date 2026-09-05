@@ -176,7 +176,7 @@ def _execute_action_with_connection(
     if decision not in EXECUTABLE_DECISIONS:
         raise ValueError(
             f"decision {decision!r} is not executable; "
-            "only auto_approved and modified may execute"
+            "only auto_approved, modified, and human_approved may execute"
         )
     if not customer_id:
         customer_id = connection.execute(
